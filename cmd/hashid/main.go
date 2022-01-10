@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/speps/go-hashids/v2"
+	"github.com/msztolcman/go-hashids/v2"
 )
 
 func main() {

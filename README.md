@@ -1,6 +1,6 @@
 
 
-go-hashids [![Build Status](https://ci.appveyor.com/api/projects/status/1s8yeafycpa2vdaq?svg=true)](https://ci.appveyor.com/project/speps/go-hashids) [![GoDoc](https://godoc.org/github.com/speps/go-hashids?status.svg)](https://godoc.org/github.com/speps/go-hashids)
+go-hashids [![GoDoc](https://godoc.org/github.com/msztolcman/go-hashids?status.svg)](https://godoc.org/github.com/msztolcman/go-hashids)
 ==========
 
 Go (golang) v1 implementation of http://www.hashids.org
@@ -8,19 +8,22 @@ under MIT License (same as the original implementations)
 
 Original implementations by [Ivan Akimov](https://github.com/ivanakimov)
 
+This version ([msztolcman/go-hashids](https://github.com/msztolcman/go-hashids)) is extended to handle `big.Int` type.
+Please take a look at `hashids.EncodeBigInt` and `hashids.DecodeBigIntWithError` methods.
+
 ### Setup
-<pre>go get github.com/speps/go-hashids/v2</pre>
+<pre>go get github.com/msztolcman/go-hashids/v2</pre>
 
 CLI tool :
 
-<pre>go get github.com/speps/go-hashids/v2/cmd/hashid</pre>
+<pre>go get github.com/msztolcman/go-hashids/v2/cmd/hashid</pre>
 
 ### Example
 ```go
 package main
 
 import "fmt"
-import "github.com/speps/go-hashids/v2"
+import "github.com/msztolcman/go-hashids/v2"
 
 func main() {
 	hd := hashids.NewData()
