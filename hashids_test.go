@@ -2,6 +2,7 @@ package hashids
 
 import (
 	"math"
+	"math/big"
 	"reflect"
 	"testing"
 	"time"
@@ -41,6 +42,27 @@ func TestEncodeDecodeInt64(t *testing.T) {
 		t.Fatal(err)
 	}
 	dec := hid.DecodeInt64(hash)
+
+	t.Logf("%v -> %v -> %v", numbers, hash, dec)
+
+	if !reflect.DeepEqual(dec, numbers) {
+		t.Errorf("Decoded numbers `%v` did not match with original `%v`", dec, numbers)
+	}
+}
+
+func TestEncodeDecodeBigInt(t *testing.T) {
+	hdata := NewData()
+	hdata.MinLength = 30
+	hdata.Salt = "this is my salt"
+
+	hid, _ := NewWithData(hdata)
+
+	numbers := []big.Int{*big.NewInt(int64(45)), *big.NewInt(int64(434)), *big.NewInt(int64(1313)), *big.NewInt(int64(99)), *big.NewInt(math.MaxInt64)}
+	hash, err := hid.EncodeBigInt(numbers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec, _ := hid.DecodeBigIntWithError(hash)
 
 	t.Logf("%v -> %v -> %v", numbers, hash, dec)
 

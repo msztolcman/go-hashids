@@ -428,6 +428,48 @@ func (h *HashID) DecodeInt64WithError(hash string) ([]int64, error) {
 	return result, nil
 }
 
+// DecodeBigIntWithError unhashes the string passed to an array of int64.
+// It is symmetric with EncodeBigInt if the Alphabet and Salt are the same ones which were used to hash.
+// MinLength has no effect on DecodeBigIntWithError.
+func (h *HashID) DecodeBigIntWithError(hash string) ([]big.Int, error) {
+	hashes := splitRunes([]rune(hash), h.guards)
+	hashIndex := 0
+	if len(hashes) == 2 || len(hashes) == 3 {
+		hashIndex = 1
+	}
+
+	result := make([]big.Int, 0, 10)
+
+	hashBreakdown := hashes[hashIndex]
+	if len(hashBreakdown) > 0 {
+		lottery := hashBreakdown[0]
+		hashBreakdown = hashBreakdown[1:]
+		hashes = splitRunes(hashBreakdown, h.seps)
+		alphabet := duplicateRuneSlice(h.alphabet)
+		buffer := make([]rune, len(alphabet)+len(h.salt)+1)
+		for _, subHash := range hashes {
+			buffer = buffer[:1]
+			buffer[0] = lottery
+			buffer = append(buffer, h.salt...)
+			buffer = append(buffer, alphabet...)
+			consistentShuffleInPlace(alphabet, buffer[:len(alphabet)])
+			number, err := unhashBigInt(subHash, alphabet)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, number)
+		}
+	}
+
+	sanityCheck, _ := h.EncodeBigInt(result)
+	if sanityCheck != hash {
+		return result, fmt.Errorf("mismatch between encode and decode: %s start %s"+
+			" re-encoded. result: %v", hash, sanityCheck, result)
+	}
+
+	return result, nil
+}
+
 // DecodeHex unhashes the string passed to a hexadecimal string.
 // It is symmetric with EncodeHex if the Alphabet and Salt are the same ones which were used to hash.
 //
