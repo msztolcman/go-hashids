@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 )
 
@@ -220,6 +221,104 @@ func (h *HashID) EncodeInt64(numbers []int64) (string, error) {
 	return string(result), nil
 }
 
+// EncodeBigInt hashes an array of big.Int to a string containing at least MinLength characters taken from the Alphabet.
+// Use DecodeBigInt using the same Alphabet and Salt to get back the array of big.Int.
+func (h *HashID) EncodeBigInt(numbers []big.Int) (string, error) {
+	if len(numbers) == 0 {
+		return "", errors.New("encoding empty array of numbers makes no sense")
+	}
+	var zero = big.NewInt(0)
+	for _, n := range numbers {
+		if n.Cmp(zero) == -1 {
+			return "", errors.New("negative number not supported")
+		}
+		//if n < 0 {
+		//	return "", errors.New("negative number not supported")
+		//}
+	}
+
+	alphabet := duplicateRuneSlice(h.alphabet)
+
+	var numbersHash = big.NewInt(0)
+	var m = big.NewInt(0)
+	var i2 = big.NewInt(0)
+	var hundred = big.NewInt(100)
+	for i, n := range numbers {
+		i2.Add(big.NewInt(int64(i)), hundred)
+		m.Mod(&n, i2)
+		numbersHash.Add(numbersHash, m)
+		//numbersHash += (n % int64(i+100))
+	}
+
+	maxRuneLength := h.maxLengthPerNumber * len(numbers)
+	if maxRuneLength < h.minLength {
+		maxRuneLength = h.minLength
+	}
+
+	result := make([]rune, 0, maxRuneLength)
+	var lenAlpha = len(alphabet)
+	var numbersHashModulus = big.Int{}
+	numbersHashModulus.Mod(numbersHash, big.NewInt(int64(lenAlpha)))
+	lottery := alphabet[numbersHashModulus.Int64()]
+	//lottery := alphabet[numbersHash%int64(len_alpha)]
+	result = append(result, lottery)
+	hashBuf := make([]rune, maxRuneLength)
+	buffer := make([]rune, len(alphabet)+len(h.salt)+1)
+
+	var n2 big.Int
+	for i, n := range numbers {
+		buffer = buffer[:1]
+		buffer[0] = lottery
+		buffer = append(buffer, h.salt...)
+		buffer = append(buffer, alphabet...)
+		consistentShuffleInPlace(alphabet, buffer[:lenAlpha])
+		hashBuf = hashBigInt(&n, alphabet, hashBuf)
+		result = append(result, hashBuf...)
+
+		if i+1 < len(numbers) {
+			//n %= int64(hashBuf[0]) + int64(i)
+			a1 := big.NewInt(int64(hashBuf[0]))
+			a2 := big.NewInt(int64(i))
+			a1.Add(a1, a2)
+			n2.Mod(&n, a1)
+			//result = append(result, h.seps[n%int64(len(h.seps))])
+			a1.SetInt64(int64(len(h.seps)))
+			a1.Mod(&n2, a1)
+			result = append(result, h.seps[a1.Int64()])
+		}
+	}
+
+	if len(result) < h.minLength {
+		guardIndex := big.NewInt(int64(result[0]))
+		guardIndex.Add(numbersHash, guardIndex)
+		guardIndex.Mod(guardIndex, big.NewInt(int64(len(h.guards))))
+
+		//guardIndex := (numbersHash + int64(result[0])) % int64(len(h.guards))
+		result = append([]rune{h.guards[guardIndex.Int64()]}, result...)
+
+		if len(result) < h.minLength {
+			guardIndex = big.NewInt(int64(result[2]))
+			guardIndex.Add(numbersHash, guardIndex)
+			guardIndex.Mod(guardIndex, big.NewInt(int64(len(h.guards))))
+
+			//guardIndex = (numbersHash + int64(result[2])) % int64(len(h.guards))
+			result = append(result, h.guards[guardIndex.Int64()])
+		}
+	}
+
+	halfLength := len(alphabet) / 2
+	for len(result) < h.minLength {
+		consistentShuffleInPlace(alphabet, duplicateRuneSlice(alphabet))
+		result = append(alphabet[halfLength:], append(result, alphabet[:halfLength]...)...)
+		excess := len(result) - h.minLength
+		if excess > 0 {
+			result = result[excess/2 : excess/2+h.minLength]
+		}
+	}
+
+	return string(result), nil
+}
+
 // EncodeHex hashes a hexadecimal string to a string containing at least MinLength characters taken from the Alphabet.
 // A hexadecimal string should not contain the 0x prefix.
 // Use DecodeHex using the same Alphabet and Salt to get back the hexadecimal string.
@@ -404,6 +503,57 @@ func unhash(input, alphabet []rune) (int64, error) {
 		}
 
 		result = result*int64(len(alphabet)) + int64(alphabetPos)
+	}
+	return result, nil
+}
+
+func hashBigInt(input *big.Int, alphabet []rune, result []rune) []rune {
+	result = result[:0]
+
+	lenAlpha := big.NewInt(int64(len(alphabet)))
+	m := big.NewInt(0)
+	input2 := big.NewInt(0).Set(input)
+	zero := big.NewInt(0)
+
+	for {
+		m.Mod(input2, lenAlpha)
+		//r := alphabet[input%int64(len(alphabet))]
+		r := alphabet[m.Int64()]
+		result = append(result, r)
+		input2.Div(input2, lenAlpha)
+		//input /= int64(len(alphabet))
+		//if input == 0 {
+		if input2.Cmp(zero) == 0 {
+			break
+		}
+	}
+	for i := len(result)/2 - 1; i >= 0; i-- {
+		opp := len(result) - 1 - i
+		result[i], result[opp] = result[opp], result[i]
+	}
+	return result
+}
+
+func unhashBigInt(input, alphabet []rune) (big.Int, error) {
+	result := big.Int{}
+	lenAlpha := big.NewInt(int64(len(alphabet)))
+
+	for _, inputRune := range input {
+		alphabetPos := -1
+		for pos, alphabetRune := range alphabet {
+			if inputRune == alphabetRune {
+				alphabetPos = pos
+				break
+			}
+		}
+		if alphabetPos == -1 {
+			return *big.NewInt(0), errors.New("alphabet used for hash was different")
+		}
+
+		alphabetPosBig := big.NewInt(int64(alphabetPos))
+		result.Mul(&result, lenAlpha)
+		result.Add(&result, alphabetPosBig)
+		//result = result*int64(len(alphabet)) + int64(alphabetPos)
 	}
 	return result, nil
 }
